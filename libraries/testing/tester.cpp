@@ -988,22 +988,40 @@ namespace eosio { namespace testing {
 
    vector<char> base_tester::get_row_by_account( name code, name scope, name table, const account_name& act ) const {
       vector<char> data;
-      const auto& db = control->db();
-      const auto* t_id = db.find<chain::table_id_object, chain::by_code_scope_table>( boost::make_tuple( code, scope, table ) );
-      if ( !t_id ) {
-         return data;
+      const auto& kv_database = control->kv_db();
+      const auto db_backing_store = kv_database.get_backing_store();
+      auto set_data = [&data](const char* value, const size_t size) {
+         data.resize( size );
+         memcpy( data.data(), value, size );
+      };
+      if (db_backing_store == eosio::chain::backing_store_type::CHAINBASE) {
+         const auto& db = control->db();
+         const auto* t_id = db.find<chain::table_id_object, chain::by_code_scope_table>( boost::make_tuple( code, scope, table ) );
+         if ( !t_id ) {
+            return data;
+         }
+         //FC_ASSERT( t_id != 0, "object not found" );
+
+         const auto& idx = db.get_index<chain::key_value_index, chain::by_scope_primary>();
+
+         auto itr = idx.lower_bound( boost::make_tuple( t_id->id, act.to_uint64_t() ) );
+         if ( itr != idx.end() && itr->t_id == t_id->id && act.to_uint64_t() == itr->primary_key ) {
+            set_data(itr->value.data(), itr->value.size());
+         }
       }
-      //FC_ASSERT( t_id != 0, "object not found" );
-
-      const auto& idx = db.get_index<chain::key_value_index, chain::by_scope_primary>();
-
-      auto itr = idx.lower_bound( boost::make_tuple( t_id->id, act.to_uint64_t() ) );
-      if ( itr == idx.end() || itr->t_id != t_id->id || act.to_uint64_t() != itr->primary_key ) {
-         return data;
+      else {
+         using namespace eosio::chain;
+         EOS_ASSERT(db_backing_store == backing_store_type::ROCKSDB,
+                    chain::contract_table_query_exception,
+                    "Support for configured backing_store has not been added to get_row_by_account");
+         auto full_primary_key = chain::backing_store::db_key_value_format::create_full_primary_key(code, scope, table, act.to_uint64_t());
+         auto session = kv_database.get_kv_undo_stack()->top();
+         auto value = session.read(full_primary_key);
+         if (value) {
+            backing_store::payer_payload pp{value->data(), value->size()};
+            set_data(pp.value, pp.value_size);
+         }
       }
-
-      data.resize( itr->value.size() );
-      memcpy( data.data(), itr->value.data(), data.size() );
       return data;
    }
 
