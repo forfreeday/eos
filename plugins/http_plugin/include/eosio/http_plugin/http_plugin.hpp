@@ -236,7 +236,7 @@ namespace eosio {
                   return {};
                }
                if constexpr (params_type == http_params_types::no_params_required) {
-                  EOS_THROW(chain::invalid_http_request, "no parameter should be given");
+                  EOS_THROW(chain::invalid_http_request, "no parameter should be given"); // TODO(qy)
                }
             }
             return fc::json::from_string(body).as<T>();
