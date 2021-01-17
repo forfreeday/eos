@@ -187,9 +187,13 @@ namespace eosio { namespace client { namespace http {
                              bool print_response ) {
    std::string postjson;
    if( !postdata.is_null() ) {
-      postjson = print_request ? fc::json::to_pretty_string( postdata ) : fc::json::to_string( postdata, fc::time_point::maximum() );
+      if (postdata.is_string() && postdata.get_string().empty()) {
+         postjson = "";
+      } else {
+         postjson = print_request ? fc::json::to_pretty_string( postdata ) : fc::json::to_string( postdata, fc::time_point::maximum() );
+      }
    }
-
+   
    const auto& url = cp.url;
 
    boost::asio::streambuf request;
